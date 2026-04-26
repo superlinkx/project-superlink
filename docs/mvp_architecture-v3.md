@@ -47,22 +47,22 @@ The following describes the high-level architectural design of the Superlink Ass
 * [x] Set up Podman Compose with Hermes, Go backend, and Firecrawl.
 * [x] Configure Ollama container with AMD ROCm (`/dev/kfd` and `/dev/dri`) passthrough.
 * [x] Implement an initialization container to automatically pull `gemma4:26b-a4b` on startup.
-* [ ] Configure the Go Gateway to accept local WebSocket connections.
-* [ ] Build a simple API proxy in Go to route WebSocket text into the Hermes container.
+* [x] Configure the Go Gateway to accept local WebSocket connections. ✅
+* [x] Build a simple API proxy in Go to route WebSocket text into the Hermes container. ✅
 * [ ] Verify basic end-to-end connectivity between a mock client, the Go Gateway, and Hermes.
 
 ### Phase 2: Android Edge Implementation
 **Goal**: Get the app registered as a system assistant and handle local audio and persistent background wakes without Firebase.
-* [x] Remove Firebase Cloud Messaging dependencies.
-* [ ] Implement `VoiceInteractionService` in Kotlin to allow system-level triggering.
-* [ ] Build the STT Module using Android `SpeechRecognizer`.
-* [ ] Build the TTS Module using Android `TextToSpeech`.
+* [x] Remove Firebase Cloud Messaging dependencies. ✅
+* [x] Implement `VoiceInteractionService` in Kotlin to allow system-level triggering. ✅
+* [x] Build the STT Module using Android `SpeechRecognizer`. ✅
+* [x] Build the TTS Module using Android `TextToSpeech`. ✅
 * [ ] Implement `SuperlinkWebSocketService` as an Android Foreground Service to maintain a persistent background connection to the Go Gateway.
 
 ### Phase 3: Intelligence & Skill Integration
 **Goal**: Enable the agent to perform real-world tasks and access custom logic.
-* [x] Configure Hermes to use Firecrawl out-of-the-box for native web search.
-* [ ] Implement an MCP Server in Go to expose custom Project Superlink functions to Hermes.
+* [x] Configure Hermes to use Firecrawl out-of-the-box for native web search. ✅
+* [x] Implement an MCP Server in Go to expose custom Project Superlink functions to Hermes. ✅
 * [ ] Verify Hermes can successfully recall persistent memory across sessions.
 * [ ] Test background cron-trigger webhook flow from Hermes to Go.
 
