@@ -92,20 +92,6 @@ services:
       - hermes
     networks:
       - superlink_net
-
-  # 5. Dozzle (Real-time log viewer)
-  dozzle:
-    image: docker.io/amir20/dozzle:latest
-    container_name: dozzle
-    restart: unless-stopped
-    ports:
-      # Mapped to 8088 since the Go backend is already using 8080
-      - "8088:8080"
-    volumes:
-      # Map the rootless Podman socket to Dozzle's expected Docker socket
-      - /run/user/1000/podman/podman.sock:/var/run/docker.sock:z
-    networks:
-      - superlink_net
     
 networks:
   superlink_net:
