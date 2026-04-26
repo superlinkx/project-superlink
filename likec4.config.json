@@ -1,0 +1,10 @@
+{
+  "$schema": "https://likec4.dev/schemas/config.json",
+  "name": "project-superlink",
+  "exclude": [
+    "**/node_modules/**",
+    "**/dist/**",
+    "**/build/**",
+    "**/docker/**",
+  ]
+}

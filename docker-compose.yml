@@ -42,7 +42,9 @@ services:
 
   # 3. Hermes Agent (The Autonomous Personality)
   hermes:
-    image: docker.io/nousresearch/hermes-agent:latest
+    build:
+      context: ./docker
+      dockerfile: hermes.Dockerfile
     container_name: hermes
     restart: unless-stopped
     command: gateway run
