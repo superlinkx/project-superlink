@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Superlink Web Debugger</title>
+    <style>
+        :root {
+            --bg-color: #f5f5f5;
+            --panel-bg: #ffffff;
+            --user-message-bg: #e3f2fd;
+            --hermes-message-bg: #f1f8e9;
+            --border-color: #ddd;
+            --text-color: #333;
+            --status-connected: #4caf50;
+            --status-disconnected: #f44336;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+
+        .header {
+            background-color: #3f51b5;
+            color: white;
+            padding: 12px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .title {
+            font-size: 18px;
+            font-weight: 600;
+        }
+
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .status-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background-color: var(--status-disconnected);
+            transition: background-color 0.3s;
+        }
+
+        .container {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        .panel {
+            flex: 1;
+            background-color: var(--panel-bg);
+            border-right: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .panel-header {
+            padding: 12px 16px;
+            font-weight: 600;
+            background-color: #f9f9f9;
+            border-bottom: 1px solid var(--border-color);
+            font-size: 14px;
+        }
+
+        .chat-messages {
+            flex: 1;
+            padding: 16px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .message {
+            max-width: 80%;
+            padding: 12px 16px;
+            border-radius: 18px;
+            word-wrap: break-word;
+        }
+
+        .user-message {
+            background-color: var(--user-message-bg);
+            align-self: flex-end;
+            border-bottom-right-radius: 4px;
+        }
+
+        .hermes-message {
+            background-color: var(--hermes-message-bg);
+            align-self: flex-start;
+            border-bottom-left-radius: 4px;
+        }
+
+        .message-meta {
+            font-size: 12px;
+            color: #757575;
+            margin-bottom: 4px;
+        }
+
+        .input-area {
+            padding: 16px;
+            background-color: #f9f9f9;
+            border-top: 1px solid var(--border-color);
+            display: flex;
+            gap: 8px;
+        }
+
+        .message-input {
+            flex: 1;
+            padding: 12px 16px;
+            border: 1px solid #ddd;
+            border-radius: 24px;
+            font-size: 14px;
+            outline: none;
+            transition: box-shadow 0.2s;
+        }
+
+        .message-input:focus {
+            box-shadow: 0 0 0 2px rgba(63, 81, 181, 0.2);
+        }
+
+        .send-button {
+            padding: 12px 24px;
+            background-color: #3f51b5;
+            color: white;
+            border: none;
+            border-radius: 24px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background-color 0.2s;
+        }
+
+        .send-button:hover {
+            background-color: #303f9f;
+        }
+
+        .send-button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+
+        .logs-panel {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .log-header {
+            padding: 12px 16px;
+            font-weight: 600;
+            background-color: #f9f9f9;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .log-controls {
+            display: flex;
+            gap: 8px;
+        }
+
+        .clear-button {
+            padding: 6px 12px;
+            background-color: #f5f5f5;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 12px;
+            cursor: pointer;
+        }
+
+        .logs-content {
+            flex: 1;
+            padding: 16px;
+            overflow-y: auto;
+            background-color: #f9f9f9;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            line-height: 1.4;
+        }
+
+        .log-entry {
+            margin-bottom: 8px;
+            padding: 8px;
+            border-radius: 4px;
+        }
+
+        .log-tx {
+            background-color: #e8f5e9;
+            border-left: 3px solid var(--status-connected);
+        }
+
+        .log-rx {
+            background-color: #fff3e0;
+            border-left: 3px solid #ff9800;
+        }
+
+        .settings-panel {
+            padding: 16px;
+            background-color: #f9f9f9;
+            border-top: 1px solid var(--border-color);
+        }
+
+        .setting-row {
+            display: flex;
+            margin-bottom: 12px;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .setting-label {
+            font-weight: 600;
+            min-width: 120px;
+        }
+
+        .setting-input {
+            flex: 1;
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 13px;
+        }
+
+        .connection-info {
+            margin-top: 8px;
+            font-size: 12px;
+            color: #757575;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="title">Superlink Web Debugger</div>
+        <div class="status-indicator">
+            <span>Status:</span>
+            <div class="status-dot" id="statusDot"></div>
+            <span id="statusText">Disconnected</span>
+        </div>
+    </div>
+
+    <div class="container">
+        <!-- Chat Panel -->
+        <div class="panel">
+            <div class="panel-header">Chat Interface</div>
+            <div class="chat-messages" id="chatMessages"></div>
+            <div class="input-area">
+                <input type="text" class="message-input" id="messageInput" placeholder="Type your message..." disabled>
+                <button class="send-button" id="sendButton" disabled>Send</button>
+            </div>
+        </div>
+
+        <!-- Logs Panel -->
+        <div class="panel">
+            <div class="log-header">
+                <span>Debug Logs</span>
+                <div class="log-controls">
+                    <button class="clear-button" id="clearLogs">Clear</button>
+                </div>
+            </div>
+            <div class="logs-content" id="logsContent"></div>
+            <div class="settings-panel">
+                <div class="setting-row">
+                    <span class="setting-label">WebSocket URL:</span>
+                    <input type="text" class="setting-input" id="wsUrl" value="ws://localhost:8080/ws">
+                </div>
+                <button class="send-button" id="connectButton">Connect</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // DOM Elements
+        const chatMessages = document.getElementById('chatMessages');
+        const messageInput = document.getElementById('messageInput');
+        const sendButton = document.getElementById('sendButton');
+        const logsContent = document.getElementById('logsContent');
+        const statusDot = document.getElementById('statusDot');
+        const statusText = document.getElementById('statusText');
+        const wsUrlInput = document.getElementById('wsUrl');
+        const connectButton = document.getElementById('connectButton');
+        const clearLogsButton = document.getElementById('clearLogs');
+
+        // WebSocket connection
+        let socket = null;
+
+        // Initialize the application
+        function init() {
+            // Set up event listeners
+            sendButton.addEventListener('click', sendMessage);
+            messageInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') sendMessage();
+            });
+            connectButton.addEventListener('click', connectToWebSocket);
+            clearLogsButton.addEventListener('click', clearLogs);
+
+            // Load saved URL from localStorage
+            const savedUrl = localStorage.getItem('superlinkWsUrl');
+            if (savedUrl) {
+                wsUrlInput.value = savedUrl;
+            }
+
+            // Try to auto-connect on page load
+            setTimeout(() => {
+                connectToWebSocket();
+            }, 500);
+        }
+
+        // Connect to WebSocket
+        function connectToWebSocket() {
+            const url = wsUrlInput.value.trim();
+
+            if (!url) {
+                addLog('Error: WebSocket URL cannot be empty', 'error');
+                return;
+            }
+
+            // Save URL for next time
+            localStorage.setItem('superlinkWsUrl', url);
+
+            // Close existing connection if any
+            if (socket && socket.readyState === WebSocket.OPEN) {
+                socket.close();
+            }
+
+            try {
+                socket = new WebSocket(url);
+                updateConnectionStatus(false); // Show connecting state
+
+                socket.onopen = () => {
+                    addLog(`Connected to ${url}`, 'tx');
+                    updateConnectionStatus(true);
+                    messageInput.disabled = false;
+                    sendButton.disabled = false;
+                };
+
+                socket.onmessage = (event) => {
+                    const data = event.data;
+                    try {
+                        const jsonData = JSON.parse(data);
+                        displayHermesMessage(jsonData.content || data);
+                        addLog(`RX: ${data}`, 'rx');
+                    } catch (e) {
+                        displayHermesMessage(data);
+                        addLog(`RX: ${data}`, 'rx');
+                    }
+                };
+
+                socket.onclose = () => {
+                    updateConnectionStatus(false);
+                    messageInput.disabled = true;
+                    sendButton.disabled = true;
+                    addLog('Disconnected from WebSocket', 'error');
+                };
+
+                socket.onerror = (error) => {
+                    updateConnectionStatus(false);
+                    addLog(`WebSocket error: ${error.message}`, 'error');
+                };
+            } catch (e) {
+                addLog(`Connection failed: ${e.message}`, 'error');
+                updateConnectionStatus(false);
+            }
+        }
+
+        // Send message to WebSocket
+        function sendMessage() {
+            const text = messageInput.value.trim();
+            if (!text || !socket || socket.readyState !== WebSocket.OPEN) return;
+
+            const message = {
+                type: 'user_message',
+                text: text,
+                timestamp: Date.now()
+            };
+
+            try {
+                socket.send(JSON.stringify(message));
+                displayUserMessage(text);
+                addLog(`TX: ${JSON.stringify(message)}`, 'tx');
+                messageInput.value = '';
+            } catch (e) {
+                addLog(`Failed to send message: ${e.message}`, 'error');
+            }
+        }
+
+        // Display user message in chat
+        function displayUserMessage(text) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'message user-message';
+
+            const metaSpan = document.createElement('span');
+            metaSpan.className = 'message-meta';
+            metaSpan.textContent = new Date().toLocaleTimeString();
+
+            const contentDiv = document.createElement('div');
+            contentDiv.textContent = text;
+
+            messageDiv.appendChild(metaSpan);
+            messageDiv.appendChild(contentDiv);
+            chatMessages.appendChild(messageDiv);
+
+            // Scroll to bottom
+            scrollToBottom(chatMessages);
+        }
+
+        // Display Hermes message in chat
+        function displayHermesMessage(text) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'message hermes-message';
+
+            const metaSpan = document.createElement('span');
+            metaSpan.className = 'message-meta';
+            metaSpan.textContent = 'Hermes';
+
+            const contentDiv = document.createElement('div');
+            contentDiv.textContent = text;
+
+            messageDiv.appendChild(metaSpan);
+            messageDiv.appendChild(contentDiv);
+            chatMessages.appendChild(messageDiv);
+
+            // Scroll to bottom
+            scrollToBottom(chatMessages);
+        }
+
+        // Add log entry
+        function addLog(text, type) {
+            const logEntry = document.createElement('div');
+            logEntry.className = `log-entry log-${type}`;
+
+            const timestamp = new Date().toLocaleTimeString();
+            logEntry.innerHTML = `<strong>[${timestamp}]</strong> ${text}`;
+
+            logsContent.appendChild(logEntry);
+            scrollToBottom(logsContent);
+        }
+
+        // Clear logs
+        function clearLogs() {
+            logsContent.innerHTML = '';
+        }
+
+        // Update connection status UI
+        function updateConnectionStatus(connected) {
+            if (connected) {
+                statusDot.style.backgroundColor = 'var(--status-connected)';
+                statusText.textContent = 'Connected';
+            } else {
+                statusDot.style.backgroundColor = 'var(--status-disconnected)';
+                statusText.textContent = 'Disconnected';
+            }
+        }
+
+        // Scroll element to bottom
+        function scrollToBottom(element) {
+            setTimeout(() => {
+                element.scrollTop = element.scrollHeight;
+            }, 10);
+        }
+
+        // Initialize on page load
+        window.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>

@@ -2,9 +2,11 @@ package main
 
 import (
 	"bytes"
+	"embed"
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/fs"
 	"log"
 	"net/http"
 	"os"
@@ -15,6 +17,9 @@ import (
 
 	"github.com/gorilla/websocket"
 )
+
+//go:embed web/*
+var webFS embed.FS
 
 // Session represents an individual user connection
 type Session struct {
@@ -36,11 +41,7 @@ type SessionManager struct {
 
 const (
 	// Time allowed to write a message to the peer.
-	writeWait = 10
-	// Time allowed to read the next pong message from the peer.
-	pongWait = 60 * 2 * 10e9 // 2 minutes
-	// Send pings to peer with this period. Must be less than pongWait.
-	pingPeriod = (pongWait * 9) / 10
+	writeWait = 10 * time.Minute
 )
 
 // Message types
@@ -60,7 +61,7 @@ func NewHermesClient(baseURL string, apiKey string) *HermesClient {
 	return &HermesClient{
 		baseURL:    baseURL,
 		apiKey:     apiKey,
-		httpClient: &http.Client{Timeout: 30 * time.Second},
+		httpClient: &http.Client{Timeout: 10 * time.Minute},
 	}
 }
 
@@ -152,8 +153,16 @@ func main() {
 	// Set up Hermes webhook endpoint
 	http.HandleFunc("/hermes/webhook", handleHermesWebhook)
 
-	// Set up MCP server endpoint
+	// // Set up MCP server endpoint
 	http.HandleFunc("/mcp", mcpServer.HandleRequest)
+
+	// Serve embedded web UI
+	uiFS, err := fs.Sub(webFS, "web")
+	if err != nil {
+		log.Printf("Warning: Could not load embedded web UI: %v", err)
+	} else {
+		http.Handle("/", http.FileServer(http.FS(uiFS)))
+	}
 
 	// Start HTTP server
 	port := os.Getenv("PORT")
@@ -161,6 +170,7 @@ func main() {
 		port = "8080"
 	}
 	log.Printf("Starting Superlink orchestrator on :%s", port)
+	log.Printf("Web UI available at http://localhost:%s", port)
 	go func() {
 		if err := http.ListenAndServe(":"+port, nil); err != nil {
 			log.Fatalf("HTTP server error: %v", err)
