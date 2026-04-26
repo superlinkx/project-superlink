@@ -91,31 +91,20 @@ services:
     networks:
       - superlink_net
 
-  # 5. Lightweight API Initialization Script
-  init-inference:
-    image: docker.io/curlimages/curl:latest # A tiny ~10MB image instead of a 5GB ROCm image
-    container_name: init-inference
+  # 5. Dozzle (Real-time log viewer)
+  dozzle:
+    image: docker.io/amir20/dozzle:latest
+    container_name: dozzle
+    restart: unless-stopped
+    ports:
+      # Mapped to 8088 since the Go backend is already using 8080
+      - "8088:8080"
+    volumes:
+      # Map the rootless Podman socket to Dozzle's expected Docker socket
+      - /run/user/1000/podman/podman.sock:/var/run/docker.sock:z
     networks:
       - superlink_net
-    depends_on:
-      - inference
-    # Execute a standard shell script using curl to talk to the Ollama REST API
-    entrypoint: ["/bin/sh", "-c"]
-    command: >
-      "
-      echo 'Waiting for local inference engine to wake up...';
-      while ! curl -s http://inference:11434/api/tags > /dev/null; do
-        sleep 2;
-      done;
-      
-      echo 'Inference engine ready. Commanding API to pull Gemma 4 26B (This will take a while)...';
-      
-      # The 'stream: false' parameter ensures this curl command blocks until the download is completely finished
-      curl http://inference:11434/api/pull -d '{"model": "gemma4:26b"}' -H "Content-Type: application/json";
-      
-      echo '\nModel pull complete! Init container shutting down.'
-      "
-
+    
 networks:
   superlink_net:
     driver: bridge

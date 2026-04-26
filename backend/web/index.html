@@ -350,17 +350,40 @@
                     sendButton.disabled = false;
                 };
 
-                socket.onmessage = (event) => {
-                    const data = event.data;
-                    try {
-                        const jsonData = JSON.parse(data);
-                        displayHermesMessage(jsonData.content || data);
-                        addLog(`RX: ${data}`, 'rx');
-                    } catch (e) {
-                        displayHermesMessage(data);
-                        addLog(`RX: ${data}`, 'rx');
-                    }
-                };
+				socket.onmessage = (event) => {
+					const data = event.data;
+					try {
+						const jsonData = JSON.parse(data);
+						if (jsonData.type === 'text_stream') {
+							// Handle streaming text
+							let lastMessageDiv = chatMessages.lastElementChild;
+							
+							// If there's no message or the last message isn't from Hermes, create a new one
+							if (!lastMessageDiv || !lastMessageDiv.classList.contains('hermes-message')) {
+								displayHermesMessage('');
+								lastMessageDiv = chatMessages.lastElementChild;
+							}
+							
+							// Append the new chunk to the content div of the last message
+							const contentDiv = lastMessageDiv.querySelector('div:last-child');
+							if (contentDiv) {
+								contentDiv.textContent += jsonData.content;
+							}
+							
+							scrollToBottom(chatMessages);
+						} else if (jsonData.type === 'text_stream_end') {
+							// Stream ended, just scroll to bottom
+							scrollToBottom(chatMessages);
+						} else {
+							// Handle regular messages
+							displayHermesMessage(jsonData.content || data);
+						}
+						addLog(`RX: ${data}`, 'rx');
+					} catch (e) {
+						displayHermesMessage(data);
+						addLog(`RX: ${data}`, 'rx');
+					}
+				};
 
                 socket.onclose = () => {
                     updateConnectionStatus(false);

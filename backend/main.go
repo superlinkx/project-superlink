@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"embed"
 	"encoding/json"
@@ -127,6 +128,91 @@ func (h *HermesClient) Generate(prompt string) (string, error) {
 	}
 
 	return content, nil
+}
+
+// Stream sends a prompt to Hermes and streams the response back token-by-token via a channel
+func (h *HermesClient) Stream(prompt string, outChan chan<- string) error {
+	defer close(outChan) // Ensure the channel closes when the stream finishes
+
+	url := h.baseURL + "/chat/completions"
+
+	payload := map[string]interface{}{
+		"messages": []map[string]interface{}{
+			{
+				"role":    "user",
+				"content": prompt,
+			},
+		},
+		"model":  "hermes",
+		"stream": true, // Request a Server-Sent Events stream
+	}
+
+	jsonData, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("failed to marshal request: %v", err)
+	}
+
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return fmt.Errorf("failed to create request: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+h.apiKey)
+
+	resp, err := h.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("request failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("hermes returned error: %s (status: %d)", string(body), resp.StatusCode)
+	}
+
+	// Parse the Server-Sent Events (SSE)
+	scanner := bufio.NewScanner(resp.Body)
+	for scanner.Scan() {
+		line := scanner.Text()
+
+		// The OpenAI streaming standard prefixes data payloads with "data: "
+		if len(line) < 6 || line[:6] != "data: " {
+			continue
+		}
+
+		dataPayload := line[6:]
+		if dataPayload == "[DONE]" {
+			break // Stream is complete
+		}
+
+		var result map[string]interface{}
+		if err := json.Unmarshal([]byte(dataPayload), &result); err != nil {
+			continue
+		}
+
+		// Extract the token delta
+		choices, ok := result["choices"].([]interface{})
+		if !ok || len(choices) == 0 {
+			continue
+		}
+
+		choice, ok := choices[0].(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		delta, ok := choice["delta"].(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		// Push the token to the channel
+		if content, ok := delta["content"].(string); ok && content != "" {
+			outChan <- content
+		}
+	}
+
+	return scanner.Err()
 }
 
 var upgrader = websocket.Upgrader{
@@ -330,29 +416,45 @@ func (sm *SessionManager) orchestrator(session *Session) {
 				continue
 			}
 
-			// Get response from Hermes Agent
+			// Get streaming response from Hermes Agent
 			hermesClient := getHermesClient()
-			response, err := hermesClient.Generate(input.Text)
-			if err != nil {
-				log.Printf("Session %s Hermes generation error: %v", session.ID, err)
-				// Fallback to mock response if Hermes fails
-				response = fmt.Sprintf("Superlink received: %s", input.Text)
+			chunkChan := make(chan string)
+
+			// Start the HTTP stream in a background goroutine
+			go func() {
+				err := hermesClient.Stream(input.Text, chunkChan)
+				if err != nil {
+					log.Printf("Session %s Hermes stream error: %v", session.ID, err)
+					chunkChan <- fmt.Sprintf("\n[Error communicating with agent: %v]", err)
+				}
+			}()
+
+			// As tokens arrive from the local LLM, immediately push them to the WebSocket
+			for chunk := range chunkChan {
+				responseMsg := map[string]any{
+					"type":    "text_stream", // Changing the type lets your frontend know to append, not replace
+					"content": chunk,
+				}
+
+				responseBytes, err := json.Marshal(responseMsg)
+				if err != nil {
+					log.Printf("Session %s JSON marshal error: %v", session.ID, err)
+					continue
+				}
+
+				// Send chunk to WriteChan for transmission
+				select {
+				case session.WriteChan <- responseBytes:
+				case <-sm.shutdown:
+					return
+				}
 			}
 
-			// Create response message
-			responseMsg := map[string]any{
-				"type":    "text",
-				"content": response,
-			}
-			responseBytes, err := json.Marshal(responseMsg)
-			if err != nil {
-				log.Printf("Session %s JSON marshal error: %v", session.ID, err)
-				continue
-			}
-
-			// Send to WriteChan for transmission
+			// Optional: Send a completion event when the stream channel closes
+			doneMsg := map[string]any{"type": "text_stream_end"}
+			doneBytes, _ := json.Marshal(doneMsg)
 			select {
-			case session.WriteChan <- responseBytes:
+			case session.WriteChan <- doneBytes:
 			case <-sm.shutdown:
 				return
 			}
