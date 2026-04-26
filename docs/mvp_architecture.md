@@ -1,1 +1,0 @@
-/home/alyx/Applications/anythingllm/storage/anythingllm-fs/journal/research_notes/superlink_project/mvp_architecture.md
