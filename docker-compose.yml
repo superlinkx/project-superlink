@@ -52,6 +52,7 @@ services:
     userns_mode: keep-id:uid=10000,gid=10000
     volumes:
       - ./docker/hermes-data:/opt/data:z
+      - ./docker/hermes-brew:/home/linuxbrew:z
     env_file:
       - .env
     environment:
