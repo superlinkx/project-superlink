@@ -37,15 +37,13 @@ services:
     networks:
       - superlink_net
 
-  # 3. Hermes Agent (The Autonomous Personality)
+# 3. Hermes Agent (The Autonomous Personality)
   hermes:
     image: docker.io/nousresearch/hermes-agent:latest
     container_name: hermes
     restart: unless-stopped
     command: gateway run
-    # userns_mode: keep-id # Uncomment if Hermes struggles to write to ./hermes-data
     volumes:
-      # Note the :z flag
       - ./hermes-data:/opt/data:z 
     environment:
       - API_SERVER_ENABLED=true
@@ -53,7 +51,9 @@ services:
       
       - OPENAI_BASE_URL=http://inference:11434/v1
       - OPENAI_API_KEY=dummy-key
-      - MODEL_NAME=gemma:latest
+      
+      # --- Explicitly define the Gemma 4 26B A4B model ---
+      - MODEL_NAME=gemma4:26b-a4b 
       
       - WEBHOOK_URL=http://backend:8080/hermes/webhook
       - FIRECRAWL_API_URL=http://firecrawl:3000
@@ -61,7 +61,6 @@ services:
       - superlink_net
     depends_on:
       - inference
-
   # 4. Firecrawl (External Web Capabilities)
   firecrawl:
     image: docker.io/mendableai/firecrawl:latest
@@ -69,6 +68,31 @@ services:
     restart: unless-stopped
     networks:
       - superlink_net
+      
+  # 5. Initialization Script for Ollama
+  init-inference:
+    image: docker.io/ollama/ollama:rocm 
+    container_name: init-inference
+    environment:
+      - OLLAMA_HOST=http://inference:11434
+    networks:
+      - superlink_net
+    depends_on:
+      - inference
+    # A lightweight loop that waits for the server to be responsive before pulling
+    entrypoint: >
+      bash -c "
+      echo 'Waiting for local inference engine to start...';
+      while ! curl -s http://inference:11434/api/tags > /dev/null; do
+        sleep 2;
+      done;
+      echo 'Inference engine ready. Pulling Gemma 4 26B A4B model...';
+      
+      # --- Explicitly pull the 26B A4B quantized model ---
+      ollama pull gemma4:26b-a4b;
+      
+      echo 'Gemma 4 26B A4B is ready for Hermes!'
+      "
 
 networks:
   superlink_net:
