@@ -16,7 +16,7 @@ model {
     title "Project Superlink"
 
     androidApp = app "Android Client (Kotlin)" {
-      description "Presentation layer. Captures user inputs, intercepts background payloads, and handles TTS."
+      description "Presentation layer. Captures user inputs via VoiceInteractionService, maintains persistent WebSocket connection as a foreground service, and handles TTS."
     }
 
     goBackend = service "Go Backend (Gateway)" {
@@ -36,23 +36,19 @@ model {
     description "Web provider used for native search and crawl capabilities."
   }
 
-  fcm = external "Firebase Cloud Messaging" {
-    description "Delivers data-only silent push notifications to the device."
-  }
-
-  ttsProvider = external "Voice Engine / TTS API" {
-    description "Synthesizes natural language strings into voice (Native, Local AI, or Cloud API)."
+  ttsProvider = external "Android TextToSpeech" {
+    description "Local on-device text-to-speech engine for audio output."
   }
 
   // User Interactions
-  customer -> androidApp "Provides inputs (text, voice, UI interactions)"
-  androidApp -> customer "Plays natural language speech"
+  customer -> androidApp "Provides voice inputs via system assistant integration"
+  androidApp -> customer "Plays natural language speech via local TTS"
 
-  // App to Backend
-  androidApp -> goBackend "Communicates exclusively via REST or WebSockets"
+  // App to Backend (100% Local)
+  androidApp -> goBackend "Communicates exclusively via WebSockets over local network"
   goBackend -> androidApp "Pushes instant payloads over active WebSockets"
 
-  // Backend to Agent
+  // Backend to Agent (100% Local)
   goBackend -> hermesAgent "Acts as proxy, securely forwarding validated formats"
   hermesAgent -> goBackend "Calls dedicated webhook/MCP tool to trigger cron-based notifications"
 
@@ -60,12 +56,11 @@ model {
   hermesAgent -> hermesMemory "Reads/Writes profile data, session notes, and reusable skills to local disk"
   hermesAgent -> firecrawl "Fetches live data, summarizes pages, and pulls external context"
 
-  // Notification Relay
-  goBackend -> fcm "Wraps payload in silent push notification if app is closed"
-  fcm -> androidApp "Wakes Kotlin app without triggering system UI banner"
+  // Background Notification Flow (100% Local)
+  goBackend -> androidApp "Sends JSON payloads directly over persistent WebSocket connection"
 
   // Voice Delivery
-  androidApp -> ttsProvider "Pipes natural language string to chosen voice engine"
+  androidApp -> ttsProvider "Pipes natural language string to chosen voice engine (Android TextToSpeech)"
   ttsProvider -> androidApp "Returns generated audio for the AI personality"
 }
 

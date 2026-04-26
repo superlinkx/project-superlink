@@ -7,12 +7,10 @@ The following describes the high-level architectural design of the Superlink Ass
 ### Logical Components
 
 * **Google Pixel Device**: The physical edge device running the Android implementation.
-    * **Superlink Android App**: The client-side application.
-        * **VoiceInteractionService**: The entry point that allows the app to be registered as the system's default assistant.
-        * **STT Module (On-Device)**: Uses Android `SpeechRecognizer` to convert local audio to text locally.
-        * **TTS Module (On-Device)**: Uses Android `TextToSpeech` to convert received text to speech locally.
-        * **WebSocket Client**: Manages a lightweight connection of text and JSON payloads to the backend during active use.
-        * **Foreground WebSocket Service**: A persistent Android Foreground Service (`SuperlinkWebSocketService`) that maintains a constant local connection to the Go Gateway, completely eliminating the need for third-party push services (like FCM) for background wake-ups and cron events.
+* **Superlink Android App**: The client-side application.
+    * **VoiceInteractionService**: The entry point that allows the app to be registered as the system's default assistant. Implemented as a foreground service that maintains a persistent WebSocket connection to the Go Gateway, completely eliminating the need for third-party push services (like FCM) for background wake-ups and cron events.
+        - **STT Module (On-Device)**: Uses Android `SpeechRecognizer` to convert local audio to text locally.
+        - **TTS Module (On-Device)**: Uses Android `TextToSpeech` to convert received text to speech locally.
 * **Superlink Backend**: The secure gateway and capability augmentation layer built in Go.
     * **Go Gateway**: Authenticates, validates, and routes data securely between the mobile client and the agent over the local network/VPN.
     * **Go MCP Server**: Exposes custom backend functions (like device integrations or local data access) to Hermes via the Model Context Protocol.
@@ -57,7 +55,7 @@ The following describes the high-level architectural design of the Superlink Ass
 * [x] Implement `VoiceInteractionService` in Kotlin to allow system-level triggering. ✅
 * [x] Build the STT Module using Android `SpeechRecognizer`. ✅
 * [x] Build the TTS Module using Android `TextToSpeech`. ✅
-* [ ] Implement `SuperlinkWebSocketService` as an Android Foreground Service to maintain a persistent background connection to the Go Gateway.
+* [x] Implement `VoiceInteractionService` as an Android Foreground Service to maintain a persistent WebSocket connection to the Go Gateway. ✅
 
 ### Phase 3: Intelligence & Skill Integration
 **Goal**: Enable the agent to perform real-world tasks and access custom logic.

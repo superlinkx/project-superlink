@@ -69,29 +69,29 @@ services:
     networks:
       - superlink_net
       
-  # 5. Initialization Script for Ollama
+  # 5. Lightweight API Initialization Script
   init-inference:
-    image: docker.io/ollama/ollama:rocm 
+    image: docker.io/curlimages/curl:latest # A tiny ~10MB image instead of a 5GB ROCm image
     container_name: init-inference
-    environment:
-      - OLLAMA_HOST=http://inference:11434
     networks:
       - superlink_net
     depends_on:
       - inference
-    # A lightweight loop that waits for the server to be responsive before pulling
-    entrypoint: >
-      bash -c "
-      echo 'Waiting for local inference engine to start...';
+    # Execute a standard shell script using curl to talk to the Ollama REST API
+    entrypoint: ["/bin/sh", "-c"]
+    command: >
+      "
+      echo 'Waiting for local inference engine to wake up...';
       while ! curl -s http://inference:11434/api/tags > /dev/null; do
         sleep 2;
       done;
-      echo 'Inference engine ready. Pulling Gemma 4 26B A4B model...';
       
-      # --- Explicitly pull the 26B A4B quantized model ---
-      ollama pull gemma4:26b-a4b;
+      echo 'Inference engine ready. Commanding API to pull Gemma 4 26B A4B (This will take a while)...';
       
-      echo 'Gemma 4 26B A4B is ready for Hermes!'
+      # The 'stream: false' parameter ensures this curl command blocks until the download is completely finished
+      curl -s -X POST http://inference:11434/api/pull -d '{\"name\": \"gemma4:26b-a4b\", \"stream\": false}';
+      
+      echo '\nModel pull complete! Init container shutting down.'
       "
 
 networks:
