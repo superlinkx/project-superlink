@@ -35,11 +35,35 @@ class VoiceInteractionService : Service() {
         super.onCreate()
         Log.d(TAG, "VoiceInteractionService created")
 
+        // Start as foreground service to maintain persistent connection
+        startForegroundService()
+
         // Initialize OkHttp client for WebSocket
         client = OkHttpClient()
 
         // Connect to backend WebSocket
         connectWebSocket()
+    }
+
+    private fun startForegroundService() {
+        val notification = android.app.Notification.Builder(this, "superlink_channel")
+            .setContentTitle("Superlink Assistant")
+            .setContentText("Listening for voice commands")
+            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .build()
+
+        // Create notification channel
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            val channel = android.app.NotificationChannel(
+                "superlink_channel",
+                "Superlink Service",
+                android.app.NotificationManager.IMPORTANCE_LOW
+            )
+            val manager = getSystemService(android.app.NotificationManager::class.java)
+            manager.createNotificationChannel(channel)
+        }
+
+        startForeground(1, notification)
     }
 
     private fun connectWebSocket() {
@@ -90,10 +114,18 @@ class VoiceInteractionService : Service() {
                 val text = json.getString("text")
                 speak(text)
             } else if (json.has("command") && json.getString("command") == "notify") {
-                // Handle background notification
+                // Handle background notification from Hermes cron
                 if (json.has("message")) {
                     val message = json.getString("message")
+                    Log.d(TAG, "Received background notification: $message")
                     speak(message)
+                }
+            } else if (json.has("type") && json.getString("type") == "cron_notification") {
+                // Direct cron notification from Hermes
+                if (json.has("text")) {
+                    val text = json.getString("text")
+                    Log.d(TAG, "Received cron notification: $text")
+                    speak(text)
                 }
             }
         } catch (e: Exception) {
