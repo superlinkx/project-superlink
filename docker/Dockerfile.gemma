@@ -1,0 +1,32 @@
+# Dockerfile for Gemma 4 Sidecar using llama.cpp
+FROM ubuntu:22.04
+
+# Install dependencies
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    git \
+    cmake \
+    build-essential \
+    wget \
+    curl \
+    ca-certificates \
+    libopenblas-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Clone llama.cpp
+RUN git clone https://github.com/ggerganov/llama.cpp.git /opt/llama.cpp
+
+# Build llama.cpp with GPU support if available
+WORKDIR /opt/llama.cpp
+RUN make -j$(nproc) LLAMA_CUBLAS=1
+
+# Copy the wrapper script from the docker directory
+COPY run-gemma-server.sh /opt/run-server.sh
+
+RUN chmod +x /opt/run-server.sh
+
+# Expose the server port
+EXPOSE 8081
+
+# Start the server
+CMD ["/opt/run-server.sh"]

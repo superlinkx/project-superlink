@@ -6,6 +6,19 @@ services:
     ports:
       - "8080:8080"
     restart: always
+    depends_on:
+      - gemma-sidecar
+
+  gemma-sidecar:
+    build:
+      context: ..
+      dockerfile: ./docker/Dockerfile.gemma
+    ports:
+      - "8081:8081"
+    volumes:
+      # In production, mount the actual Gemma 4 model file here
+      - ./models:/models
+    restart: always
 
 networks:
   default:

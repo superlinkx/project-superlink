@@ -1,0 +1,77 @@
+specification {
+  element user { notation "User"; style { shape person } }
+  element system { notation "System"; style { shape rectangle } }
+  element app { notation "App"; style { shape component } }
+  element service { notation "Service"; style { shape component } }
+  element database { notation "Database"; style { shape storage } }
+  element external { notation "External"; style { shape person } }
+}
+
+model {
+  customer = user "User" {
+    description "The end-user interacting with the custom AI personality via the Android device."
+  }
+
+  system superlink {
+    title "Project Superlink"
+
+    androidApp = app "Android Client (Kotlin)" {
+      description "Presentation layer. Captures user inputs, intercepts background payloads, and handles TTS."
+    }
+
+    goBackend = service "Go Backend (Gateway)" {
+      description "Strict intermediary. Handles security, auth, sanitization, routing, MCP tools, and dispatching push notifications."
+    }
+
+    hermesAgent = service "Hermes Agent" {
+      description "Sandboxed Docker container hosting the autonomous AI framework. Handles cron scheduling and multi-step reasoning."
+    }
+
+    hermesMemory = database "Agent Memory & State" {
+      description "Local state isolation including MEMORY.md, USER.md, SQLite FTS5, and generated Markdown skills files."
+    }
+  }
+
+  firecrawl = external "Firecrawl" {
+    description "Web provider used for native search and crawl capabilities."
+  }
+
+  fcm = external "Firebase Cloud Messaging" {
+    description "Delivers data-only silent push notifications to the device."
+  }
+
+  ttsProvider = external "Voice Engine / TTS API" {
+    description "Synthesizes natural language strings into voice (Native, Local AI, or Cloud API)."
+  }
+
+  // User Interactions
+  customer -> androidApp "Provides inputs (text, voice, UI interactions)"
+  androidApp -> customer "Plays natural language speech"
+
+  // App to Backend
+  androidApp -> goBackend "Communicates exclusively via REST or WebSockets"
+  goBackend -> androidApp "Pushes instant payloads over active WebSockets"
+
+  // Backend to Agent
+  goBackend -> hermesAgent "Acts as proxy, securely forwarding validated formats"
+  hermesAgent -> goBackend "Calls dedicated webhook/MCP tool to trigger cron-based notifications"
+
+  // Agent State & Capabilities
+  hermesAgent -> hermesMemory "Reads/Writes profile data, session notes, and reusable skills to local disk"
+  hermesAgent -> firecrawl "Fetches live data, summarizes pages, and pulls external context"
+
+  // Notification Relay
+  goBackend -> fcm "Wraps payload in silent push notification if app is closed"
+  fcm -> androidApp "Wakes Kotlin app without triggering system UI banner"
+
+  // Voice Delivery
+  androidApp -> ttsProvider "Pipes natural language string to chosen voice engine"
+  ttsProvider -> androidApp "Returns generated audio for the AI personality"
+}
+
+views {
+  view index {
+    title "Project Superlink Architecture Context"
+    include *
+  }
+}
