@@ -1,25 +1,75 @@
+version: '3.8'
+
 services:
+  # 1. The Go Backend (The Gatekeeper & Dispatcher)
   backend:
-    build:
-      context: ../backend
-      dockerfile: ../docker/Dockerfile
+    build: 
+      context: ./backend
+      dockerfile: Dockerfile
     ports:
       - "8080:8080"
-    restart: always
+    environment:
+      - HERMES_API_URL=http://hermes:8642/v1
+      - HERMES_API_KEY=${HERMES_SECRET_KEY}
+    networks:
+      - superlink_net
     depends_on:
-      - gemma-sidecar
+      - hermes
 
-  gemma-sidecar:
-    build:
-      context: ..
-      dockerfile: ./docker/Dockerfile.gemma
-    ports:
-      - "8081:8081"
+  # 2. Local Inference Engine (Gemma via Ollama - AMD ROCm Rootless)
+  inference:
+    image: docker.io/ollama/ollama:rocm 
+    container_name: inference
+    restart: unless-stopped
+    # Forces the container user to match your host user, granting GPU device access
+    userns_mode: keep-id
+    devices:
+      - /dev/kfd:/dev/kfd
+      - /dev/dri:/dev/dri
+    security_opt:
+      - seccomp=unconfined
+      - label=disable # Disables SELinux separation for GPU memory mapping if needed
+    environment:
+      - OLLAMA_FLASH_ATTENTION=true
     volumes:
-      # In production, mount the actual Gemma 4 model file here
-      - ./models:/models
-    restart: always
+      # Note the :z flag for rootless SELinux volume relabeling
+      - ./inference-data:/root/.ollama:z
+    networks:
+      - superlink_net
+
+  # 3. Hermes Agent (The Autonomous Personality)
+  hermes:
+    image: docker.io/nousresearch/hermes-agent:latest
+    container_name: hermes
+    restart: unless-stopped
+    command: gateway run
+    # userns_mode: keep-id # Uncomment if Hermes struggles to write to ./hermes-data
+    volumes:
+      # Note the :z flag
+      - ./hermes-data:/opt/data:z 
+    environment:
+      - API_SERVER_ENABLED=true
+      - API_SERVER_KEY=${HERMES_SECRET_KEY}
+      
+      - OPENAI_BASE_URL=http://inference:11434/v1
+      - OPENAI_API_KEY=dummy-key
+      - MODEL_NAME=gemma:latest
+      
+      - WEBHOOK_URL=http://backend:8080/hermes/webhook
+      - FIRECRAWL_API_URL=http://firecrawl:3000
+    networks:
+      - superlink_net
+    depends_on:
+      - inference
+
+  # 4. Firecrawl (External Web Capabilities)
+  firecrawl:
+    image: docker.io/mendableai/firecrawl:latest
+    container_name: firecrawl
+    restart: unless-stopped
+    networks:
+      - superlink_net
 
 networks:
-  default:
-    name: superlink-network
+  superlink_net:
+    driver: bridge

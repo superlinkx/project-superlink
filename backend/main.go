@@ -49,27 +49,32 @@ const (
 	messageTypeToolCall
 )
 
-// GemmaClient handles communication with the Gemma 4 sidecar
-type GemmaClient struct {
+// HermesClient handles communication with the Hermes Agent API
+type HermesClient struct {
 	baseURL    string
+	apiKey     string
 	httpClient *http.Client
 }
 
-func NewGemmaClient(baseURL string) *GemmaClient {
-	return &GemmaClient{
+func NewHermesClient(baseURL string, apiKey string) *HermesClient {
+	return &HermesClient{
 		baseURL:    baseURL,
+		apiKey:     apiKey,
 		httpClient: &http.Client{Timeout: 30 * time.Second},
 	}
 }
 
-func (g *GemmaClient) Generate(prompt string) (string, error) {
-	url := g.baseURL + "/completion"
+func (h *HermesClient) Generate(prompt string) (string, error) {
+	url := h.baseURL + "/chat/completions"
 
 	payload := map[string]interface{}{
-		"prompt":      prompt,
-		"n_predict":   128,
-		"temperature": 0.7,
-		"top_p":       0.9,
+		"messages": []map[string]interface{}{
+			{
+				"role":    "user",
+				"content": prompt,
+			},
+		},
+		"model": "hermes",
 	}
 
 	jsonData, err := json.Marshal(payload)
@@ -82,8 +87,9 @@ func (g *GemmaClient) Generate(prompt string) (string, error) {
 		return "", fmt.Errorf("failed to create request: %v", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+h.apiKey)
 
-	resp, err := g.httpClient.Do(req)
+	resp, err := h.httpClient.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("request failed: %v", err)
 	}
@@ -91,7 +97,7 @@ func (g *GemmaClient) Generate(prompt string) (string, error) {
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		return "", fmt.Errorf("gemma sidecar returned error: %s (status: %d)", string(body), resp.StatusCode)
+		return "", fmt.Errorf("hermes agent returned error: %s (status: %d)", string(body), resp.StatusCode)
 	}
 
 	var result map[string]interface{}
@@ -99,9 +105,24 @@ func (g *GemmaClient) Generate(prompt string) (string, error) {
 		return "", fmt.Errorf("failed to decode response: %v", err)
 	}
 
-	content, ok := result["content"].(string)
+	choices, ok := result["choices"].([]interface{})
+	if !ok || len(choices) == 0 {
+		return "", fmt.Errorf("invalid response format from hermes agent")
+	}
+
+	choice, ok := choices[0].(map[string]interface{})
 	if !ok {
-		return "", fmt.Errorf("invalid response format from gemma sidecar")
+		return "", fmt.Errorf("invalid choice format from hermes agent")
+	}
+
+	message, ok := choice["message"].(map[string]interface{})
+	if !ok {
+		return "", fmt.Errorf("invalid message format from hermes agent")
+	}
+
+	content, ok := message["content"].(string)
+	if !ok {
+		return "", fmt.Errorf("no content in response from hermes agent")
 	}
 
 	return content, nil
@@ -122,6 +143,17 @@ func main() {
 
 	// Set up WebSocket route
 	http.HandleFunc("/ws", sessionManager.handleWebSocket)
+
+	// Initialize MCP Server
+	mcpServer := NewMCPServer()
+	mcpServer.RegisterTool("getUserProfile", getUserProfileHandler)
+	mcpServer.RegisterTool("getWeather", getWeatherHandler)
+
+	// Set up Hermes webhook endpoint
+	http.HandleFunc("/hermes/webhook", handleHermesWebhook)
+
+	// Set up MCP server endpoint
+	http.HandleFunc("/mcp", mcpServer.HandleRequest)
 
 	// Start HTTP server
 	port := os.Getenv("PORT")
@@ -156,19 +188,23 @@ func NewSessionManager() *SessionManager {
 	}
 }
 
-// getGemmaClient returns a singleton Gemma client
-var gemmaOnce sync.Once
-var gemmaClient *GemmaClient
+// getHermesClient returns a singleton Hermes client
+var hermesOnce sync.Once
+var hermesClient *HermesClient
 
-func getGemmaClient() *GemmaClient {
-	gemmaOnce.Do(func() {
-		gemmaURL := os.Getenv("GEMMA_URL")
-		if gemmaURL == "" {
-			gemmaURL = "http://gemma-sidecar:8081"
+func getHermesClient() *HermesClient {
+	hermesOnce.Do(func() {
+		hermesURL := os.Getenv("HERMES_API_URL")
+		if hermesURL == "" {
+			hermesURL = "http://hermes:8642/v1"
 		}
-		gemmaClient = NewGemmaClient(gemmaURL)
+		hermesKey := os.Getenv("HERMES_API_KEY")
+		if hermesKey == "" {
+			hermesKey = "default-key"
+		}
+		hermesClient = NewHermesClient(hermesURL, hermesKey)
 	})
-	return gemmaClient
+	return hermesClient
 }
 
 // handleWebSocket handles incoming WebSocket connections
@@ -284,12 +320,12 @@ func (sm *SessionManager) orchestrator(session *Session) {
 				continue
 			}
 
-			// Get response from Gemma 4 sidecar
-			gemmaClient := getGemmaClient()
-			response, err := gemmaClient.Generate(input.Text)
+			// Get response from Hermes Agent
+			hermesClient := getHermesClient()
+			response, err := hermesClient.Generate(input.Text)
 			if err != nil {
-				log.Printf("Session %s Gemma generation error: %v", session.ID, err)
-				// Fallback to mock response if Gemma fails
+				log.Printf("Session %s Hermes generation error: %v", session.ID, err)
+				// Fallback to mock response if Hermes fails
 				response = fmt.Sprintf("Superlink received: %s", input.Text)
 			}
 
@@ -337,4 +373,27 @@ func (sm *SessionManager) writeLoop(session *Session) {
 			}
 		}
 	}
+}
+
+// handleHermesWebhook handles incoming webhooks from Hermes Agent
+func handleHermesWebhook(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var payload map[string]interface{}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		log.Printf("Webhook JSON decode error: %v", err)
+		http.Error(w, "Bad request", http.StatusBadRequest)
+		return
+	}
+
+	log.Printf("Received webhook from Hermes: %v", payload)
+
+	// TODO: Implement logic to send push notifications to Android clients
+	// This would use Firebase Cloud Messaging or similar
+
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprint(w, "Webhook received")
 }
